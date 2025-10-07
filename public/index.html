@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>3D Glasses Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>body{font-family:system-ui,Arial;margin:2rem} input,button{padding:.5rem;margin:.25rem} .hidden{display:none} pre{white-space:pre-wrap}</style>
+  <script>
+    // basic SPA routing in same page not needed
+  </script>
+  </head>
+<body>
+  <h1>3D Glasses Dashboard</h1>
+  <section id="auth">
+    <h2>Auth</h2>
+    <input id="email" placeholder="email"/>
+    <input id="password" type="password" placeholder="password"/>
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
+    <div id="authStatus"></div>
+  </section>
+  <section id="uploader" class="hidden">
+    <h2>Create Job</h2>
+    <input id="images" type="file" accept="image/png" multiple />
+    <button onclick="createJob()">Upload & Create</button>
+    <div id="jobInfo"></div>
+    <h3>Your Jobs</h3>
+    <button onclick="loadJobs()">Refresh</button>
+    <ul id="jobs"></ul>
+  </section>
+  <script>
+    const api = (p, opts={}) => fetch(p, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.headers||{}),
+        ...(localStorage.token? { Authorization: 'Bearer ' + localStorage.token } : {})
+      }
+    });
+    function setAuth(ok){
+      document.getElementById('uploader').classList.toggle('hidden', !ok);
+    }
+    async function register(){
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const r = await api('/api/auth/register',{method:'POST',body:JSON.stringify({email,password})});
+      const j = await r.json();
+      if(j.token){ localStorage.token=j.token; setAuth(true); }
+      document.getElementById('authStatus').textContent = JSON.stringify(j);
+    }
+    async function login(){
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const r = await api('/api/auth/login',{method:'POST',body:JSON.stringify({email,password})});
+      const j = await r.json();
+      if(j.token){ localStorage.token=j.token; setAuth(true); }
+      document.getElementById('authStatus').textContent = JSON.stringify(j);
+    }
+    async function createJob(){
+      const files = document.getElementById('images').files;
+      if(!files.length){ alert('Pick at least 1 PNG'); return; }
+      const fd = new FormData();
+      for(const f of files) fd.append('images', f);
+      const r = await fetch('/api/jobs', { method:'POST', body: fd, headers: { Authorization: 'Bearer ' + localStorage.token } });
+      const j = await r.json();
+      document.getElementById('jobInfo').textContent = JSON.stringify(j);
+      loadJobs();
+    }
+    async function loadJobs(){
+      const r = await api('/api/jobs');
+      const jobs = await r.json();
+      const ul = document.getElementById('jobs');
+      ul.innerHTML = '';
+      for(const job of jobs){
+        const li = document.createElement('li');
+        li.textContent = `#${job.id} - ${job.status} ${job.result_url||''}`;
+        const btn = document.createElement('button');
+        btn.textContent = 'Poll';
+        btn.onclick = async () => {
+          const pr = await api(`/api/jobs/${job.id}/poll`, { method:'POST' });
+          const pj = await pr.json();
+          alert(JSON.stringify(pj));
+          loadJobs();
+        };
+        li.appendChild(btn);
+        if(job.result_url){
+          const a = document.createElement('a'); a.href = job.result_url; a.textContent = 'Download'; a.target='_blank'; li.appendChild(a);
+        }
+        ul.appendChild(li);
+      }
+    }
+  </script>
+</body>
+</html>
+
