@@ -5,6 +5,7 @@ import fs from 'fs';
 import { db } from '../models/db.js';
 import { authMiddleware } from '../middlewares/auth.js';
 import { createImageTo3DTask, getTask } from '../services/meshy.js';
+import { getPublicUrlForLocalFile } from '../services/publicUrl.js';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -30,8 +31,12 @@ router.post('/', authMiddleware, upload.array('images', 4), async (req, res) => 
   db.run('INSERT INTO jobs (user_id, status) VALUES (?, ?)', [req.userId, 'pending'], function(err){
     if (err) return res.status(500).json({ error: 'db error' });
     const jobId = this.lastID;
-    const baseUrl = process.env.BASE_URL || 'http://localhost:8080';
-    const imageUrls = files.map(f => `${baseUrl}/public/${f.path.replace('public/','')}`);
+    // Ensure files are accessible to Meshy via public URLs
+    const imageUrls = [];
+    for (const f of files) {
+      const url = await getPublicUrlForLocalFile(f.path);
+      imageUrls.push(url);
+    }
     const stmt = db.prepare('INSERT INTO job_images (job_id, file_path) VALUES (?, ?)');
     for (const f of files) stmt.run(jobId, f.path);
     stmt.finalize();
